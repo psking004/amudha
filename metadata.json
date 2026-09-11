@@ -1,0 +1,6 @@
+{
+  "name": "SelfCheck",
+  "description": "Personal privacy checkup app for checking breach exposure, search visibility, and data broker listings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
