@@ -1,3 +1,4 @@
+import java.util.Properties
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 
 plugins {
@@ -8,6 +9,20 @@ plugins {
   alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
 }
+
+// --- Signing -----------------------------------------------------------------
+// Release signing is read from keystore.properties (see keystore.properties.example),
+// falling back to the KEYSTORE_PATH / STORE_PASSWORD / KEY_PASSWORD (/ KEY_ALIAS) env vars.
+// If neither provides an existing keystore, assembleRelease still builds an UNSIGNED APK.
+val keystoreProps = Properties().apply {
+  val f = rootProject.file("keystore.properties")
+  if (f.exists()) f.inputStream().use { load(it) }
+}
+val releaseStoreFile: File? =
+  (keystoreProps.getProperty("storeFile") ?: System.getenv("KEYSTORE_PATH"))
+    ?.let { rootProject.file(it) }
+    ?.takeIf { it.exists() }
+val customDebugKeystore: File = rootProject.file("debug.keystore")
 
 android {
   namespace = "com.example"
@@ -24,18 +39,23 @@ android {
   }
 
   signingConfigs {
-    create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+    if (releaseStoreFile != null) {
+      create("release") {
+        storeFile = releaseStoreFile
+        storePassword = keystoreProps.getProperty("storePassword") ?: System.getenv("STORE_PASSWORD")
+        keyAlias = keystoreProps.getProperty("keyAlias") ?: System.getenv("KEY_ALIAS") ?: "upload"
+        keyPassword = keystoreProps.getProperty("keyPassword") ?: System.getenv("KEY_PASSWORD")
+      }
     }
-    create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
+    // Optional shared debug keystore at the project root (gitignored); otherwise the
+    // standard ~/.android/debug.keystore is used.
+    if (customDebugKeystore.exists()) {
+      create("debugConfig") {
+        storeFile = customDebugKeystore
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+      }
     }
   }
 
@@ -44,9 +64,9 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      signingConfig = signingConfigs.findByName("release")
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+    debug { signingConfigs.findByName("debugConfig")?.let { signingConfig = it } }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
